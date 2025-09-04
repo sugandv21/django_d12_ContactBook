@@ -2,34 +2,32 @@ from django.shortcuts import render, redirect
 from django.core.mail import send_mail, BadHeaderError
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
-from .forms import ContactForm, FeedbackForm
 from .models import Contact
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
 from django.contrib.auth import logout
 from django.contrib import messages
+from .forms import ContactForm, FeedbackForm, SignupForm
 
 def signup(request):
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = SignupForm(request.POST)
         if form.is_valid():
             user = form.save()
-            login(request, user)  # auto-login after signup
+            login(request, user)
             messages.success(request, "Account created successfully!")
             return redirect("home")
     else:
-        form = UserCreationForm()
-
-    # If your template is inside the app:
-    return render(request, "contacts/registration/signup.html", {"form": form})
-    # If you kept it at project-level `templates/registration/`, use this instead:
-    # return render(request, "registration/signup.html", {"form": form})
+        form = SignupForm()
+    return render(request, "registration/signup.html", {"form": form})
 
 @login_required
 def home(request):
     contacts = Contact.objects.filter(user=request.user).order_by("-created_at")
     # templates in app: contacts/templates/contacts/home.html
     return render(request, "contacts/home.html", {"contacts": contacts})
+
+from django.core.mail import EmailMessage
 
 @login_required
 def add_contact(request):
@@ -40,25 +38,30 @@ def add_contact(request):
             contact.user = request.user
             contact.save()
 
-            # Notify admin (safe)
-            try:
-                send_mail(
-                    subject="New Contact Added",
-                    message=f"{request.user.username} added {contact.name} ({contact.email})",
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[settings.EMAIL_HOST_USER],
-                    fail_silently=False,
-                )
-            except BadHeaderError:
-                messages.error(request, "Invalid header found.")
-            except Exception as e:
-                messages.warning(request, f"Could not send email: {e}")
+            # Email admin with reply-to pointing to the signed-in user's email
+            body = (
+                f"User: {request.user.username} ({request.user.email or 'no email'})\n"
+                f"Added Contact: {contact.name}\n"
+                f"Email: {contact.email}\n"
+                f"Phone: {contact.phone or '-'}\n"
+                f"Notes: {contact.notes or '-'}\n"
+            )
 
-            messages.success(request, "Contact saved successfully.")
+            msg = EmailMessage(
+                subject="New Contact Added",
+                body=body,
+                from_email=settings.DEFAULT_FROM_EMAIL,              
+                to=[settings.EMAIL_HOST_USER],                     
+                reply_to=[request.user.email] if request.user.email else None,
+            )
+            msg.send(fail_silently=False)
+
+            messages.success(request, "Contact saved and admin notified.")
             return redirect("home")
     else:
         form = ContactForm()
     return render(request, "contacts/add_contact.html", {"form": form})
+
 
 @login_required
 def feedback(request):
