@@ -15,6 +15,21 @@ def signup(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
+            if user.email:  # only if email is provided
+                body = (
+                    f"Hello {user.username},\n\n"
+                    "Welcome to Contact Book! \n\n"
+                    "Your registration was successful. You can now log in and start adding contacts.\n\n"
+                    "Thanks,\n"
+                    "Contact Book Team"
+                )
+                msg = EmailMessage(
+                    subject="Registration Successful - Contact Book",
+                    body=body,
+                    from_email=settings.DEFAULT_FROM_EMAIL,  # your Gmail
+                    to=[user.email],  # send directly to the registered user
+                )
+                msg.send()
             messages.success(request, "Account created successfully!")
             return redirect("home")
     else:
@@ -96,3 +111,4 @@ def feedback(request):
 def logout_then_redirect(request):
     logout(request)
     return redirect("login")
+
